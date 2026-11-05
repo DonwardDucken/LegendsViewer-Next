@@ -77,6 +77,7 @@ public class Site : WorldObject, IHasCoordinates
     public List<HistoricalFigure> RelatedHistoricalFigures { get; set; } = [];
     public List<string> RelatedHistoricalFigureLinks => RelatedHistoricalFigures.ConvertAll(x => x.ToLink(true, this));
 
+
     public List<OwnerPeriod> OwnerHistory { get; set; } = [];
 
     public List<SiteProperty> SiteProperties { get; set; } = [];

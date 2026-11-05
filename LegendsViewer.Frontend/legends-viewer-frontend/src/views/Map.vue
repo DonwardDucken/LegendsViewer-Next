@@ -12,7 +12,7 @@ import { useWorldMapStore } from '../stores/mapStore';
 import L, { Map as LeafletMap, ImageOverlay, Layer, LayerGroup } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { components } from '../generated/api-schema'; // Import from the OpenAPI schema
-
+//import { useSiteStore } from '../stores/worldObjectStores'; //Zum Zugriff auf die relatedhistoricalfigures
 import type { WarfareMapDto, WarMapOverlayDto, BattleMapMarkerDto } from '../types/legends';
 
 export type SiteType = components['schemas']['SiteType'];
@@ -418,7 +418,8 @@ const siteTypeMarkers: Record<SiteType, MarkerConfig> = {
   ImportantLocation: { shape: 'star' },
 };
 
-function createMarker(siteType: SiteType, siteColor: string | null | undefined, latlng: L.LatLngExpression): L.Layer {
+    function createMarker(siteType: SiteType, siteColor: string | null | undefined, latlng: L.LatLngExpression): L.Layer {
+       
   const config = siteTypeMarkers[siteType];
   const color = config?.color ?? siteColor ?? "#666"
   const size = config?.size ?? 3;
@@ -495,7 +496,9 @@ function wireInternalLinks(container: HTMLElement, router: Router): void {
 
 
 
-function createUnifiedPickerPopup(items: MapTileItem[], router: Router): HTMLElement {
+    function createUnifiedPickerPopup(items: MapTileItem[], router: Router): HTMLElement {
+		//const store = useSiteStore();
+		//const test = store.object?.relatedHistoricalFigureLinks;
   if (items.length === 1) {
     const single = items[0];
     if (single.type === 'battle') {
@@ -523,13 +526,18 @@ function createUnifiedPickerPopup(items: MapTileItem[], router: Router): HTMLEle
 
     if (item.type === 'site') {
       const siteData = item.data as SiteAtCoordinate;
-      const marker = siteData.marker;
+        const marker = siteData.marker;
       if (marker.name) appendRichContent(itemEl, marker.name);
       else itemEl.append('Unknown site');
       itemEl.append(document.createElement('br'));
       itemEl.append(marker.typeAsString ?? 'Unknown');
       itemEl.append(document.createElement('br'), document.createElement('br'));
-      appendRichContent(itemEl, marker.owner ?? 'Others');
+        appendRichContent(itemEl, marker.owner ?? 'Others_');
+        itemEl.append(document.createElement('br'));
+        const t = siteData.marker.historicalFigure?.toString();
+        appendRichContent(itemEl, t ); itemEl.append(document.createElement('br'));
+		//appendRichContent(itemEl, store.object?.relatedHistoricalFigureLinks.toString()?? 'error relatHistFig')
+
     } else if (item.type === 'battle') {
       const battle = item.data as BattleMapMarkerDto;
       itemEl.appendChild(createBattlePopupElement(battle));

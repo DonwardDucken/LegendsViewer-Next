@@ -12,7 +12,9 @@ public class SiteMarkerDto(Site site)
     public string Name { get; set; } = site.ToLink();
     public string Owner { get; set; } = site.CurrentCiv?.ToLink() ?? "Others";
     public string OwnerText { get; set; } = site.CurrentCiv?.Name ?? "Others";
-    public int? OwnerId { get; set; } = site.CurrentCiv?.Id;
+    public List<string> HistoricalFigure { get; set; } = site.RelatedHistoricalFigureLinks ;
+
+	public int? OwnerId { get; set; } = site.CurrentCiv?.Id;
     public int? CurrentOwnerId { get; set; } = site.CurrentOwner?.Id;
     public string Color { get; set; } = site.CurrentOwner?.LineColor.ToRgbaString() ?? "#666";
     public string TypeAsString { get; set; } = site.SiteType.GetDescription();

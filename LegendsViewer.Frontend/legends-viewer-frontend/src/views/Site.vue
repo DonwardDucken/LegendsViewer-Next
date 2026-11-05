@@ -23,6 +23,7 @@ const lists: ComputedRef<LegendLinkListData[]> = computed(() => [
     { title: 'Abductions', items: store.object?.abductionLinks ?? [], icon: "mdi-map-marker-alert", subtitle: "Kidnappings that happened here" },
     { title: 'Beast Attacks', items: store.object?.beastAttackLinks ?? [], icon: "mdi-chess-knight", subtitle: "Beast attacks recorded here" }
 ]);
+    //const coords = mapStore.object?.
 
 </script>
 
