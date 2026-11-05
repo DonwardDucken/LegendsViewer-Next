@@ -25,6 +25,7 @@ const favoriteStore = useFavoriteStore();
 const societyItems = [
   { title: 'Factions and Groups', to: '/entity' },
   { title: 'Historical Figures', to: '/hf' },
+  { title: 'Dragons', to: '/dragons' },
 ];
 const geographyItems = [
   { title: 'Regions', to: '/region' },

@@ -25,6 +25,7 @@ const routes = [
   { path: '/entity/:id', name: 'Entity', component: () => import('../views/Entity.vue') },
   { path: '/hf', name: 'Historical Figures', component: () => import('../views/HistoricalFigures.vue') },
   { path: '/hf/:id', name: 'Historical Figure', component: () => import('../views/HistoricalFigure.vue') },
+  { path: '/dragons', name: 'Dragons', component: () => import('../views/Dragons.vue') },
   { path: '/artifact', name: 'Artifacts', component: () => import('../views/Artifacts.vue') },
   { path: '/artifact/:id', name: 'Artifact', component: () => import('../views/Artifact.vue') },
   { path: '/danceform', name: 'Dance Forms', component: () => import('../views/DanceForms.vue') },

@@ -2,6 +2,8 @@ using LegendsViewer.Backend.Contracts;
 using LegendsViewer.Backend.Legends.WorldObjects;
 using Microsoft.AspNetCore.Mvc;
 using LegendsViewer.Backend.Legends.EventCollections;
+using LegendsViewer.Backend.Legends.Enums;
+using LegendsViewer.Backend.Legends.Events;
 using LegendsViewer.Backend.DataAccess.Repositories.Interfaces;
 
 namespace LegendsViewer.Backend.Controllers;
@@ -72,6 +74,35 @@ public class EntityController(IWorldObjectRepository<Entity> repository) : World
 
 public class HistoricalFigureController(IWorldObjectRepository<HistoricalFigure> repository) : WorldObjectGenericController<HistoricalFigure>(repository)
 {
+    [HttpGet("dragons")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult<List<DragonHistoricalFigureDto>> GetDragons()
+    {
+        var dragons = Repository.GetAllElements()
+            .Where(figure => string.Equals(figure.Race.Id, "DRAGON", StringComparison.OrdinalIgnoreCase))
+            .Select(figure => new DragonHistoricalFigureDto(
+                figure.Id,
+                figure.ToLink(false),
+                figure.IsAlive,
+                figure.RelatedSites
+                    .Where(siteLink => siteLink.Site != null)
+                    .Select(siteLink => new DragonRelatedSiteDto(
+                        siteLink.Site!.Id,
+                        siteLink.Site.Name,
+                        siteLink.Site.Type))
+                    .DistinctBy(site => site.Id)
+                    .ToList(),
+                figure.Events
+                    .OfType<ChangeHfState>()
+                    .Where(worldEvent => worldEvent.State == HfState.Settled && worldEvent.SubState is not (45 or 46 or 47))
+                    .OrderBy(worldEvent => worldEvent.Year)
+                    .ThenBy(worldEvent => worldEvent.Id)
+                    .Select(worldEvent => new WorldEventDto(worldEvent, figure))
+                    .ToList()))
+            .ToList();
+
+        return Ok(dragons);
+    }
 }
 
 public class MountainPeakController(IWorldObjectRepository<MountainPeak> repository) : WorldObjectGenericController<MountainPeak>(repository)
