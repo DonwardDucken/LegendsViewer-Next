@@ -7049,6 +7049,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/HistoricalFigure/dragons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["DragonHistoricalFigureDto"][];
+                        "application/json": components["schemas"]["DragonHistoricalFigureDto"][];
+                        "text/json": components["schemas"]["DragonHistoricalFigureDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/HistoricalFigure": {
         parameters: {
             query?: never;
@@ -20488,6 +20525,23 @@ export interface components {
         };
         /** @enum {string} */
         DeathCause: "Unknown" | "None" | "Struck" | "OldAge" | "Thirst" | "Suffocated" | "Bled" | "Cold" | "CrushedByABridge" | "Drowned" | "Starved" | "InACage" | "Infection" | "CollidedWithAnObstacle" | "PutToRest" | "StarvedQuit" | "Trap" | "DragonsFire" | "Burned" | "Murdered" | "Shot" | "CaveIn" | "FrozenInWater" | "ExecutedGeneric" | "ExecutedFedToBeasts" | "ExecutedBurnedAlive" | "ExecutedCrucified" | "ExecutedDrowned" | "ExecutedHackedToPieces" | "ExecutedBuriedAlive" | "ExecutedBeheaded" | "DrainedBlood" | "Collapsed" | "ScaredToDeath" | "Scuttled" | "FlyingObject" | "Slaughtered" | "Melted" | "Spikes" | "Heat" | "Vanish" | "CoolingMagma" | "Vehicle" | "SuicideDrowned" | "SuicideLeaping" | "Chasm";
+        DragonHistoricalFigureDto: {
+            /** Format: int32 */
+            id?: number;
+            name?: string | null;
+            gender?: string | null;
+            isAlive?: boolean;
+            /** Format: double */
+            distanceToNearestVolcano?: number | null;
+            relatedSites?: components["schemas"]["DragonRelatedSiteDto"][] | null;
+            settledInEvents?: components["schemas"]["WorldEventDto"][] | null;
+        };
+        DragonRelatedSiteDto: {
+            /** Format: int32 */
+            id?: number;
+            name?: string | null;
+            type?: string | null;
+        };
         Duel: {
             /** Format: int32 */
             id?: number;

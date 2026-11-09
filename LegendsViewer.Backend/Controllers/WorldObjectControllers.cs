@@ -5,6 +5,7 @@ using LegendsViewer.Backend.Legends.EventCollections;
 using LegendsViewer.Backend.Legends.Enums;
 using LegendsViewer.Backend.Legends.Events;
 using LegendsViewer.Backend.DataAccess.Repositories.Interfaces;
+using LegendsViewer.Backend.Legends.Various;
 
 namespace LegendsViewer.Backend.Controllers;
 
@@ -78,12 +79,19 @@ public class HistoricalFigureController(IWorldObjectRepository<HistoricalFigure>
     [ProducesResponseType(StatusCodes.Status200OK)]
     public ActionResult<List<DragonHistoricalFigureDto>> GetDragons()
     {
-        var dragons = Repository.GetAllElements()
+        var figures = Repository.GetAllElements();
+        var volcanoCoordinates = figures.FirstOrDefault()?.World?.MountainPeaks
+            .Where(peak => peak.IsVolcano)
+            .SelectMany(peak => peak.Coordinates)
+            .ToList() ?? [];
+        var dragons = figures
             .Where(figure => string.Equals(figure.Race.Id, "DRAGON", StringComparison.OrdinalIgnoreCase))
             .Select(figure => new DragonHistoricalFigureDto(
                 figure.Id,
-                figure.ToLink(false),
+                figure.Name,
+                figure.Caste.ToLowerInvariant(),
                 figure.IsAlive,
+                GetDistanceToNearestVolcano(figure, volcanoCoordinates),
                 figure.RelatedSites
                     .Where(siteLink => siteLink.Site != null)
                     .Select(siteLink => new DragonRelatedSiteDto(
@@ -102,6 +110,35 @@ public class HistoricalFigureController(IWorldObjectRepository<HistoricalFigure>
             .ToList();
 
         return Ok(dragons);
+    }
+
+    private static double? GetDistanceToNearestVolcano(HistoricalFigure figure, List<Location> volcanoCoordinates)
+    {
+        var latestSettledEvent = figure.Events
+            .OfType<ChangeHfState>()
+            .Where(worldEvent => worldEvent.State == HfState.Settled && worldEvent.SubState is not (45 or 46 or 47))
+            .OrderByDescending(worldEvent => worldEvent.Year)
+            .ThenByDescending(worldEvent => worldEvent.Month)
+            .ThenByDescending(worldEvent => worldEvent.Day)
+            .ThenByDescending(worldEvent => worldEvent.Id)
+            .FirstOrDefault();
+        var dragonCoordinates = latestSettledEvent?.Site?.Coordinates;
+        if (dragonCoordinates == null || dragonCoordinates.Count == 0)
+        {
+            dragonCoordinates = latestSettledEvent?.Coordinates is { } coordinates ? [coordinates] : [];
+        }
+
+        if (dragonCoordinates.Count == 0 || volcanoCoordinates.Count == 0)
+        {
+            return null;
+        }
+
+        return dragonCoordinates.Min(location => volcanoCoordinates.Min(volcano =>
+        {
+            var deltaX = (double)location.X - volcano.X;
+            var deltaY = (double)location.Y - volcano.Y;
+            return Math.Sqrt(deltaX * deltaX + deltaY * deltaY);
+        }));
     }
 }
 
