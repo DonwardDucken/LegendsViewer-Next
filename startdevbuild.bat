@@ -1,0 +1,1 @@
+dotnet run --project LegendsViewer.Backend/LegendsViewer.Backend.csproj

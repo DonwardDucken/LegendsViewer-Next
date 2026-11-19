@@ -9,7 +9,9 @@ namespace LegendsViewer.Backend.Contracts;
 public sealed record DragonHistoricalFigureDto(
     int Id,
     string Name,
+    string Gender,
     bool IsAlive,
+    double? DistanceToNearestVolcano,
     List<DragonRelatedSiteDto> RelatedSites,
     List<WorldEventDto> SettledInEvents);
 

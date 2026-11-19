@@ -607,6 +607,7 @@ function wireInternalLinks(container: HTMLElement, router: Router): void {
   for (const item of items) {
     const itemEl = document.createElement('div');
     itemEl.className = 'site-picker__item';
+    itemEl.classList.add('useScroll');
 
     if (item.type === 'site') {
       const siteData = item.data as SiteAtCoordinate;
@@ -618,8 +619,16 @@ function wireInternalLinks(container: HTMLElement, router: Router): void {
       itemEl.append(document.createElement('br'), document.createElement('br'));
         appendRichContent(itemEl, marker.owner ?? 'Others_');
         itemEl.append(document.createElement('br'));
-        const t = siteData.marker.historicalFigure?.toString();
-        appendRichContent(itemEl, t ); itemEl.append(document.createElement('br'));
+        const historicalFigures = marker.historicalFigure?.toString();
+        if (historicalFigures) {
+          const historicalFiguresEl = document.createElement('div');
+          historicalFiguresEl.className = 'site-picker__historical-figures';
+          appendRichContent(historicalFiguresEl, historicalFigures);
+          historicalFiguresEl.append(document.createElement('br'));
+          itemEl.appendChild(historicalFiguresEl);
+        }
+        itemEl.append(document.createElement('br'));
+
 		//appendRichContent(itemEl, store.object?.relatedHistoricalFigureLinks.toString()?? 'error relatHistFig')
 
     } else if (item.type === 'battle') {
@@ -1289,6 +1298,12 @@ export default defineComponent({
   margin-bottom: 10px;
 }
 
+.site-picker__historical-figures {
+  max-height: 120px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
 .site-picker--multiple .site-picker__item {
   padding: 8px 0;
 }
@@ -1339,4 +1354,3 @@ export default defineComponent({
   animation: map-target-pulse 1.5s infinite ease-in-out;
 }
 </style>
-

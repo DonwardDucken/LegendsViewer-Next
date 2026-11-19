@@ -17,7 +17,9 @@ interface DragonEvent {
 interface Dragon {
     id: number;
     name: string;
+    gender: string;
     isAlive: boolean;
+    distanceToNearestVolcano: number | null;
     relatedSites: DragonRelatedSite[];
     settledInEvents: DragonEvent[];
 }
@@ -36,10 +38,25 @@ const statusOptions = [
 
 const headers = [
     { title: 'Name', key: 'name', align: 'start' as const },
+    { title: 'Distance to nearest volcano', key: 'distanceToNearestVolcano', align: 'end' as const },
     { title: 'Status', key: 'isAlive', align: 'start' as const },
     { title: 'Related sites and other dragons', key: 'relatedSites', align: 'start' as const },
     { title: 'Settled in events', key: 'settledInEvents', align: 'start' as const },
 ];
+
+function genderIcon(gender: string): string {
+    if (gender === 'female') {
+        return 'mdi-gender-female';
+    }
+    if (gender === 'male') {
+        return 'mdi-gender-male';
+    }
+    return 'mdi-help-circle-outline';
+}
+
+function formatDistance(distance: number | null): string {
+    return distance == null ? 'Unknown' : `${distance.toFixed(1)} tiles`;
+}
 
 const visibleDragons = computed(() => {
     const query = search.value.trim().toLocaleLowerCase();
@@ -131,9 +148,14 @@ onMounted(loadDragons);
                         <v-data-table :headers="headers" :items="visibleDragons" :loading="isLoading"
                             item-value="id" no-data-text="No dragons found">
                             <template #item.name="{ item }">
+                                <v-icon :icon="genderIcon(item.gender)" :title="item.gender || 'Unknown gender'"
+                                    size="small" class="mr-1" />
                                 <router-link :to="`/hf/${item.id}`" class="dragon-link">
                                     {{ item.name }}
                                 </router-link>
+                            </template>
+                            <template #item.distanceToNearestVolcano="{ value }">
+                                {{ formatDistance(value) }}
                             </template>
                             <template #item.isAlive="{ value }">
                                 <v-chip size="small" :color="value ? 'green' : 'grey'" variant="tonal">
@@ -159,11 +181,10 @@ onMounted(loadDragons);
                                 <span v-else class="muted">No related sites</span>
                             </template>
                             <template #item.settledInEvents="{ item }">
-                                <details v-if="item.settledInEvents.length">
-                                    <summary>{{ item.settledInEvents.length }} events</summary>
+                                <div v-if="item.settledInEvents.length">
                                     <div v-for="event in item.settledInEvents" :key="event.id" class="event-entry"
                                         v-html="event.html"></div>
-                                </details>
+                                </div>
                                 <span v-else class="muted">None</span>
                             </template>
                         </v-data-table>
