@@ -13,7 +13,8 @@ import L, { Map as LeafletMap, ImageOverlay, Layer, LayerGroup } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { components } from '../generated/api-schema'; // Import from the OpenAPI schema
 //import { useSiteStore } from '../stores/worldObjectStores'; //Zum Zugriff auf die relatedhistoricalfigures
-import type { WarfareMapDto, WarMapOverlayDto, BattleMapMarkerDto } from '../types/legends';
+import type { WarfareMapDto, WarMapOverlayDto, BattleMapMarkerDto, DragonHistoricalFigureDto } from '../types/legends';
+import War from './War.vue';
 
 export type SiteType = components['schemas']['SiteType'];
 type SiteMarker = components['schemas']['SiteMarkerDto'];
@@ -36,6 +37,65 @@ function formatEntityLinkWithBadge(id: number, name?: string, color?: string): s
   const bgColor = color && color !== '#666666' ? color : '#5c6bc0';
   const chipHtml = `<span style="background-color:${bgColor};color:#ffffff;margin-right:4px;" class="v-chip v-chip--label v-theme--dark v-chip--density-compact v-chip--size-default v-chip--variant-tonal soc" draggable="false"><span class="v-chip__underlay"></span><div class="v-chip__content" data-no-activator="">${initials}</div></span>`;
   return `${chipHtml}<a href="/entity/${id}">${entityName}</a>`;
+}
+
+//copy of createBattlePopupElement but for historical figures
+function createHistFigurePopupElement(histFigure: WarMapOverlayDto): HTMLElement {
+  const container = document.createElement('div');
+  container.className = 'histFig-popup-item';
+
+  const titleDiv = document.createElement('div');
+  titleDiv.style.cssText = 'font-weight: 600; font-size: 14px; margin-bottom: 6px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px;';
+
+  if (histFigure.link) {
+    appendRichContent(titleDiv, histFigure.link);
+  } else {
+    const color = histFigure.attackerColor && histFigure.attackerColor !== '#666666' ? histFigure.attackerColor : '#E53935';
+    titleDiv.innerHTML = `<i class="mdi mdi-sword-cross" style="color: ${color}; margin-right: 4px; font-size: 16px;"></i><a href="/war/${histFigure.id}">${histFigure.name}</a>`;
+  }
+
+  if (histFigure.isActive) {
+    const badge = document.createElement('span');
+    badge.style.cssText = 'background: #e53935; color: white; border-radius: 4px; padding: 2px 6px; font-size: 10px; margin-left: 6px;';
+    badge.textContent = 'Active';
+    titleDiv.appendChild(badge);
+  }
+  container.appendChild(titleDiv);
+
+  const attackerDiv = document.createElement('div');
+  attackerDiv.style.cssText = 'font-size: 12px; margin-bottom: 4px; display: flex; align-items: center; flex-wrap: wrap;';
+  const attackerLabel = document.createElement('strong');
+  attackerLabel.textContent = 'Attacker:\u00A0';
+  attackerDiv.appendChild(attackerLabel);
+  if (histFigure.attackerLink) {
+    appendRichContent(attackerDiv, histFigure.attackerLink);
+  } else if (histFigure.attackerId) {
+    appendRichContent(attackerDiv, formatEntityLinkWithBadge(histFigure.attackerId, histFigure.attackerName, histFigure.attackerColor));
+  } else {
+    attackerDiv.append(histFigure.attackerName || 'Unknown');
+  }
+  container.appendChild(attackerDiv);
+
+  const defenderDiv = document.createElement('div');
+  defenderDiv.style.cssText = 'font-size: 12px; margin-bottom: 4px; display: flex; align-items: center; flex-wrap: wrap;';
+  const defenderLabel = document.createElement('strong');
+  defenderLabel.textContent = 'Defender:\u00A0';
+  defenderDiv.appendChild(defenderLabel);
+  if (histFigure.defenderLink) {
+    appendRichContent(defenderDiv, histFigure.defenderLink);
+  } else if (histFigure.defenderId) {
+    appendRichContent(defenderDiv, formatEntityLinkWithBadge(histFigure.defenderId, histFigure.defenderName, undefined));
+  } else {
+    defenderDiv.append(histFigure.defenderName || 'Unknown');
+  }
+  container.appendChild(defenderDiv);
+
+  const statsDiv = document.createElement('div');
+  statsDiv.style.cssText = 'font-size: 11px; opacity: 0.8; margin-top: 4px;';
+  statsDiv.innerHTML = `Years: ${histFigure.startYear} - ${histFigure.endYear === -1 ? 'Present' : histFigure.endYear}<br/>Total Deaths: ${(histFigure.deathCount ?? 0).toLocaleString()}`;
+  container.appendChild(statsDiv);
+
+  return container;
 }
 
 function createWarPopupElement(war: WarMapOverlayDto): HTMLElement {
@@ -98,6 +158,12 @@ function createWarPopupElement(war: WarMapOverlayDto): HTMLElement {
 
 function createWarPopup(war: WarMapOverlayDto, router: Router): HTMLElement {
   const container = createWarPopupElement(war);
+  wireInternalLinks(container, router);
+  return container;
+}
+
+function createHistFigurePopup(histFigure: WarMapOverlayDto, router: Router): HTMLElement {
+  const container = createHistFigurePopupElement(histFigure);
   wireInternalLinks(container, router);
   return container;
 }
@@ -202,6 +268,24 @@ function createBattlePopup(battle: BattleMapMarkerDto, router: Router): HTMLElem
   const container = createBattlePopupElement(battle);
   wireInternalLinks(container, router);
   return container;
+}
+
+function renderHistFigureOverlay(
+  histFigure: DragonHistoricalFigureDto,
+  war: WarMapOverlayDto,
+  targetLayer: LayerGroup,
+  router: Router,
+  toLatLng: (x: number, y: number) => L.LatLngTuple,
+  onRegisterItem?: (item: MapTileItem) => void
+): { points: L.LatLngTuple[]; mainMarker?: L.Marker } {
+  const points: L.LatLngTuple[] = [];
+  const popup = createHistFigurePopup(war, router);
+  let mainMarker: L.Marker | undefined = undefined;
+
+
+  // Placeholder for rendering historical figure overlays if needed in the future
+
+  return { points, mainMarker };
 }
 
 function renderWarOverlay(
@@ -544,6 +628,7 @@ function wireInternalLinks(container: HTMLElement, router: Router): void {
     } else if (item.type === 'war') {
       const war = item.data as WarMapOverlayDto;
       itemEl.appendChild(createWarPopupElement(war));
+      itemEl.appendChild(createHistFigurePopupElement(war));
     }
 
     wireInternalLinks(itemEl, router);

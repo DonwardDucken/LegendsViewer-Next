@@ -89,7 +89,8 @@ public class HistoricalFigureController(IWorldObjectRepository<HistoricalFigure>
                     .Select(siteLink => new DragonRelatedSiteDto(
                         siteLink.Site!.Id,
                         siteLink.Site.Name,
-                        siteLink.Site.Type))
+                        siteLink.Site.Type,
+                        siteLink.Site))
                     .DistinctBy(site => site.Id)
                     .ToList(),
                 figure.Events

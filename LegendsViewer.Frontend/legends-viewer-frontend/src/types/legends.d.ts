@@ -115,5 +115,12 @@ export interface WarfareMapDto {
     battles: BattleMapMarkerDto[];
 }
 
+export interface DragonHistoricalFigureDto{
+    id: number;
+    name: string;
+    isAlive: boolean;
+    RelatedSites: DragonRelatedSiteDto[];
+    SettledInEvents: WorldEventDto[];
+}
 
 
