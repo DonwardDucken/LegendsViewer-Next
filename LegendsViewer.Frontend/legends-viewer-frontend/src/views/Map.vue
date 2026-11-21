@@ -9,17 +9,17 @@ import { defineComponent, onMounted, watch, ref, onBeforeUnmount, type Ref } fro
 import { useRouter, useRoute, type Router } from 'vue-router';
 import { useWorldStore } from '../stores/worldStore';
 import { useWorldMapStore } from '../stores/mapStore';
+import { API_BASE_URL } from '../apiClient';
 import L, { Map as LeafletMap, ImageOverlay, Layer, LayerGroup } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { components } from '../generated/api-schema'; // Import from the OpenAPI schema
 //import { useSiteStore } from '../stores/worldObjectStores'; //Zum Zugriff auf die relatedhistoricalfigures
 import type { WarfareMapDto, WarMapOverlayDto, BattleMapMarkerDto, DragonHistoricalFigureDto } from '../types/legends';
-import War from './War.vue';
 
 export type SiteType = components['schemas']['SiteType'];
 type SiteMarker = components['schemas']['SiteMarkerDto'];
 
-export type MapTileItemType = 'site' | 'war' | 'battle';
+export type MapTileItemType = 'site' | 'war' | 'battle' | 'historicalFigure';
 
 export interface MapTileItem {
   type: MapTileItemType;
@@ -27,7 +27,7 @@ export interface MapTileItem {
   y: number;
   layerGroup: LayerGroup;
   marker: L.Layer;
-  data: SiteAtCoordinate | WarMapOverlayDto | BattleMapMarkerDto;
+  data: SiteAtCoordinate | WarMapOverlayDto | BattleMapMarkerDto | DragonHistoricalFigureDto;
 }
 
 function formatEntityLinkWithBadge(id: number, name?: string, color?: string): string {
@@ -40,60 +40,90 @@ function formatEntityLinkWithBadge(id: number, name?: string, color?: string): s
 }
 
 //copy of createBattlePopupElement but for historical figures
-function createHistFigurePopupElement(histFigure: WarMapOverlayDto): HTMLElement {
+function createHistFigurePopupElement(histFigure: DragonHistoricalFigureDto): HTMLElement {
   const container = document.createElement('div');
   container.className = 'histFig-popup-item';
 
   const titleDiv = document.createElement('div');
   titleDiv.style.cssText = 'font-weight: 600; font-size: 14px; margin-bottom: 6px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px;';
 
-  if (histFigure.link) {
-    appendRichContent(titleDiv, histFigure.link);
-  } else {
-    const color = histFigure.attackerColor && histFigure.attackerColor !== '#666666' ? histFigure.attackerColor : '#E53935';
-    titleDiv.innerHTML = `<i class="mdi mdi-sword-cross" style="color: ${color}; margin-right: 4px; font-size: 16px;"></i><a href="/war/${histFigure.id}">${histFigure.name}</a>`;
-  }
+  const figureLink = document.createElement('a');
+  figureLink.href = `/hf/${histFigure.id}`;
+  figureLink.textContent = histFigure.name;
+  titleDiv.appendChild(figureLink);
 
-  if (histFigure.isActive) {
+  if (histFigure.isAlive) {
     const badge = document.createElement('span');
     badge.style.cssText = 'background: #e53935; color: white; border-radius: 4px; padding: 2px 6px; font-size: 10px; margin-left: 6px;';
-    badge.textContent = 'Active';
+    badge.textContent = 'Alive';
     titleDiv.appendChild(badge);
   }
   container.appendChild(titleDiv);
 
-  const attackerDiv = document.createElement('div');
-  attackerDiv.style.cssText = 'font-size: 12px; margin-bottom: 4px; display: flex; align-items: center; flex-wrap: wrap;';
-  const attackerLabel = document.createElement('strong');
-  attackerLabel.textContent = 'Attacker:\u00A0';
-  attackerDiv.appendChild(attackerLabel);
-  if (histFigure.attackerLink) {
-    appendRichContent(attackerDiv, histFigure.attackerLink);
-  } else if (histFigure.attackerId) {
-    appendRichContent(attackerDiv, formatEntityLinkWithBadge(histFigure.attackerId, histFigure.attackerName, histFigure.attackerColor));
-  } else {
-    attackerDiv.append(histFigure.attackerName || 'Unknown');
-  }
-  container.appendChild(attackerDiv);
+  // A dragon can be present at a site without having a RelatedSite link to it.
+  const sites = [
+    ...(histFigure.relatedSites ?? []).map(site => ({ site, label: 'Related site: ' })),
+    ...(histFigure.settledSites ?? []).map(site => ({ site, label: 'Settled at: ' })),
+    ...(histFigure.involvedSites ?? []).map(site => ({ site, label: 'Involved at: ' })),
+  ].filter((entry, index, entries) =>
+    entries.findIndex(candidate => candidate.site.id === entry.site.id) === index);
 
-  const defenderDiv = document.createElement('div');
-  defenderDiv.style.cssText = 'font-size: 12px; margin-bottom: 4px; display: flex; align-items: center; flex-wrap: wrap;';
-  const defenderLabel = document.createElement('strong');
-  defenderLabel.textContent = 'Defender:\u00A0';
-  defenderDiv.appendChild(defenderLabel);
-  if (histFigure.defenderLink) {
-    appendRichContent(defenderDiv, histFigure.defenderLink);
-  } else if (histFigure.defenderId) {
-    appendRichContent(defenderDiv, formatEntityLinkWithBadge(histFigure.defenderId, histFigure.defenderName, undefined));
-  } else {
-    defenderDiv.append(histFigure.defenderName || 'Unknown');
-  }
-  container.appendChild(defenderDiv);
+  for (const { site: relatedSite, label } of sites) {
+    const siteDiv = document.createElement('div');
+    siteDiv.style.cssText = 'font-size: 12px; margin-top: 8px;';
+    const siteLabel = document.createElement('strong');
+    siteLabel.textContent = label;
+    siteDiv.appendChild(siteLabel);
+    appendRichContent(siteDiv, relatedSite.site.link);
+    container.appendChild(siteDiv);
 
-  const statsDiv = document.createElement('div');
-  statsDiv.style.cssText = 'font-size: 11px; opacity: 0.8; margin-top: 4px;';
-  statsDiv.innerHTML = `Years: ${histFigure.startYear} - ${histFigure.endYear === -1 ? 'Present' : histFigure.endYear}<br/>Total Deaths: ${(histFigure.deathCount ?? 0).toLocaleString()}`;
-  container.appendChild(statsDiv);
+    if (relatedSite.attackers.length === 0) {
+      const noAttacks = document.createElement('div');
+      noAttacks.style.cssText = 'font-size: 11px; opacity: 0.8; margin-left: 8px;';
+      noAttacks.textContent = 'No recorded attacks.';
+      container.appendChild(noAttacks);
+      continue;
+    }
+
+    for (const attacker of relatedSite.attackers) {
+      const attackDiv = document.createElement('div');
+      attackDiv.style.cssText = 'font-size: 12px; margin: 4px 0 0 8px;';
+      attackDiv.append(attacker.id === histFigure.id ? 'Dragon attack ' : 'Attack by ');
+      const attackerLink = document.createElement('a');
+      attackerLink.href = `/hf/${attacker.id}`;
+      attackerLink.textContent = attacker.name;
+      attackDiv.append(attackerLink, ` (${attacker.attackYear})`);
+
+      const previousPositionDiv = document.createElement('div');
+      previousPositionDiv.style.cssText = 'font-size: 11px; opacity: 0.8; margin-left: 8px;';
+      previousPositionDiv.append('Previous position: ');
+      if (attacker.previousPosition) {
+        appendRichContent(previousPositionDiv, attacker.previousPosition.link);
+      } else {
+        previousPositionDiv.append('Unknown');
+      }
+      attackDiv.appendChild(previousPositionDiv);
+      container.appendChild(attackDiv);
+    }
+  }
+
+  for (const attack of histFigure.siteAttacks ?? []) {
+    const attackDiv = document.createElement('div');
+    attackDiv.style.cssText = 'font-size: 12px; margin-top: 6px;';
+    attackDiv.append('Dragon attack ');
+    appendRichContent(attackDiv, attack.targetSite.link);
+    attackDiv.append(` (${attack.attackYear})`);
+    const previousPositionDiv = document.createElement('div');
+    previousPositionDiv.style.cssText = 'font-size: 11px; opacity: 0.8; margin-left: 8px;';
+    previousPositionDiv.append('Previous position: ');
+    if (attack.previousPosition) {
+      appendRichContent(previousPositionDiv, attack.previousPosition.link);
+    } else {
+      previousPositionDiv.append('Unknown');
+    }
+    attackDiv.appendChild(previousPositionDiv);
+    container.appendChild(attackDiv);
+  }
 
   return container;
 }
@@ -162,10 +192,67 @@ function createWarPopup(war: WarMapOverlayDto, router: Router): HTMLElement {
   return container;
 }
 
-function createHistFigurePopup(histFigure: WarMapOverlayDto, router: Router): HTMLElement {
+function createHistFigurePopup(histFigure: DragonHistoricalFigureDto, router: Router): HTMLElement {
   const container = createHistFigurePopupElement(histFigure);
   wireInternalLinks(container, router);
   return container;
+}
+
+function renderDragonAttackArrow(
+  dragon: DragonHistoricalFigureDto,
+  fromSite: DragonHistoricalFigureDto['relatedSites'][number]['site'],
+  toSite: DragonHistoricalFigureDto['relatedSites'][number]['site'],
+  year: number,
+  description: string,
+  color: string,
+  targetLayer: LayerGroup,
+  router: Router,
+  toLatLng: (x: number, y: number) => L.LatLngTuple
+): void {
+  const from = fromSite.coordinates[0];
+  const to = toSite.coordinates[0];
+  if (!from || !to || fromSite.id === toSite.id) return;
+
+  const start = toLatLng(from.x, from.y);
+  const end = toLatLng(to.x, to.y);
+  const popup = document.createElement('div');
+  popup.className = 'histFig-popup-item';
+  const title = document.createElement('strong');
+  title.textContent = `${description} (${year})`;
+  popup.appendChild(title);
+  const figureLink = document.createElement('a');
+  figureLink.href = `/hf/${dragon.id}`;
+  figureLink.textContent = dragon.name;
+  popup.append(document.createElement('br'), figureLink, document.createElement('br'));
+  appendRichContent(popup, fromSite.link);
+  popup.append(' → ');
+  appendRichContent(popup, toSite.link);
+  wireInternalLinks(popup, router);
+
+  const line = L.polyline([start, end], {
+    color,
+    weight: 7,
+    opacity: 0.9,
+    dashArray: '10, 10',
+    pane: 'overlayPane',
+  });
+  line.bindPopup(popup);
+  targetLayer.addLayer(line);
+
+  const dLat = end[0] - start[0];
+  const dLng = end[1] - start[1];
+  const angleDeg = Math.atan2(dLng, dLat) * (180 / Math.PI);
+  const arrow = L.marker(end, {
+    icon: L.divIcon({
+      className: 'war-arrow-head',
+      html: `<div style="transform: rotate(${angleDeg}deg); color: ${color}; width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.85));"><svg viewBox="0 0 24 24" width="34" height="34" fill="currentColor" stroke="#000000" stroke-width="1.2"><path d="M12 2L2 22l2 1L12 18l8 5 2-1z"/></svg></div>`,
+      iconSize: [38, 38],
+      iconAnchor: [19, 19],
+    }),
+    pane: 'markerPane',
+  });
+  arrow.bindPopup(popup);
+  targetLayer.addLayer(arrow);
 }
 
 function createBattlePopupElement(battle: BattleMapMarkerDto): HTMLElement {
@@ -268,24 +355,6 @@ function createBattlePopup(battle: BattleMapMarkerDto, router: Router): HTMLElem
   const container = createBattlePopupElement(battle);
   wireInternalLinks(container, router);
   return container;
-}
-
-function renderHistFigureOverlay(
-  histFigure: DragonHistoricalFigureDto,
-  war: WarMapOverlayDto,
-  targetLayer: LayerGroup,
-  router: Router,
-  toLatLng: (x: number, y: number) => L.LatLngTuple,
-  onRegisterItem?: (item: MapTileItem) => void
-): { points: L.LatLngTuple[]; mainMarker?: L.Marker } {
-  const points: L.LatLngTuple[] = [];
-  const popup = createHistFigurePopup(war, router);
-  let mainMarker: L.Marker | undefined = undefined;
-
-
-  // Placeholder for rendering historical figure overlays if needed in the future
-
-  return { points, mainMarker };
 }
 
 function renderWarOverlay(
@@ -591,6 +660,9 @@ function wireInternalLinks(container: HTMLElement, router: Router): void {
     if (single.type === 'war') {
       return createWarPopup(single.data as WarMapOverlayDto, router);
     }
+    if (single.type === 'historicalFigure') {
+      return createHistFigurePopup(single.data as DragonHistoricalFigureDto, router);
+    }
   }
 
   const container = document.createElement('div');
@@ -637,7 +709,8 @@ function wireInternalLinks(container: HTMLElement, router: Router): void {
     } else if (item.type === 'war') {
       const war = item.data as WarMapOverlayDto;
       itemEl.appendChild(createWarPopupElement(war));
-      itemEl.appendChild(createHistFigurePopupElement(war));
+    } else if (item.type === 'historicalFigure') {
+      itemEl.appendChild(createHistFigurePopupElement(item.data as DragonHistoricalFigureDto));
     }
 
     wireInternalLinks(itemEl, router);
@@ -729,6 +802,10 @@ export default defineComponent({
     const controlLayers = ref<L.Control.Layers>();
 
     const warfareLayer = ref<LayerGroup | null>(null);
+    const dragonAttackLayer = new L.LayerGroup();
+    const dragonFigures: DragonHistoricalFigureDto[] = [];
+    const popupBoundMarkers = new WeakSet<object>();
+    let selectedDragonSiteIds = new Set<number>();
 
     const tileItemsMap = new Map<string, MapTileItem[]>();
 
@@ -745,6 +822,81 @@ export default defineComponent({
           const activeItems = getActiveItemsAtTile(x, y);
           return createUnifiedPickerPopup(activeItems, router);
         }, { minWidth: 220 });
+        if (!popupBoundMarkers.has(marker)) {
+          marker.on('popupopen', () => {
+            const activeItems = getActiveItemsAtTile(x, y);
+            const siteIds = activeItems
+              .filter(item => item.type === 'site')
+              .map(item => (item.data as SiteAtCoordinate).marker.id)
+              .filter((id): id is number => id != null);
+            renderDragonAttacksForSites(siteIds);
+          });
+          popupBoundMarkers.add(marker);
+        }
+      }
+    };
+
+    const renderDragonAttacksForSites = (siteIds: number[]) => {
+      selectedDragonSiteIds = new Set(siteIds);
+      dragonAttackLayer.clearLayers();
+      // Keep dragon overlays opt-in and independent from the Wars & Battles layer.
+      if (!leafletMap.value?.hasLayer(dragonAttackLayer) || siteIds.length === 0) return;
+
+      const selectedDragons = dragonFigures.filter(dragon => {
+        const dragonSites = [
+          ...(dragon.relatedSites ?? []),
+          ...(dragon.settledSites ?? []),
+          ...(dragon.involvedSites ?? []),
+        ];
+        return dragonSites.some(site => selectedDragonSiteIds.has(site.id));
+      });
+      if (selectedDragons.length === 0) return;
+
+      for (const dragon of selectedDragons) {
+        for (const attack of dragon.siteAttacks ?? []) {
+          if (!attack.previousPosition) continue;
+          renderDragonAttackArrow(
+            dragon,
+            attack.previousPosition,
+            attack.targetSite,
+            attack.attackYear,
+            'Dragon attack',
+            '#E53935',
+            dragonAttackLayer,
+            router,
+            toLatLng
+          );
+        }
+
+        const incomingAttacks = new Map<string, {
+          relatedSite: DragonHistoricalFigureDto['relatedSites'][number];
+          attacker: DragonHistoricalFigureDto['relatedSites'][number]['attackers'][number];
+        }>();
+        for (const relatedSite of [
+          ...(dragon.relatedSites ?? []),
+          ...(dragon.settledSites ?? []),
+          ...(dragon.involvedSites ?? []),
+        ]) {
+          for (const attacker of relatedSite.attackers ?? []) {
+            if (attacker.id !== dragon.id) {
+              incomingAttacks.set(`${relatedSite.id}:${attacker.id}:${attacker.attackEventId}`, { relatedSite, attacker });
+            }
+          }
+        }
+        for (const { relatedSite, attacker } of incomingAttacks.values()) {
+          if (!attacker.previousPosition) continue;
+          renderDragonAttackArrow(
+            dragon,
+            attacker.previousPosition,
+            relatedSite.site,
+            attacker.attackYear,
+            `Attack on ${dragon.name}'s site by ${attacker.name}`,
+            '#42A5F5',
+            dragonAttackLayer,
+            router,
+            toLatLng
+          );
+        }
       }
     };
 
@@ -756,9 +908,55 @@ export default defineComponent({
       bindTileMarkerPopup(item.marker, item.x, item.y);
     };
 
+    const loadDragonSiteItems = async () => {
+      try {
+        const response = await fetch(new URL('api/HistoricalFigure/dragons', API_BASE_URL));
+        if (!response.ok) {
+          throw new Error(`Request failed (${response.status})`);
+        }
+
+        const dragons = await response.json() as DragonHistoricalFigureDto[];
+        dragonFigures.splice(0, dragonFigures.length, ...dragons);
+        for (const dragon of dragonFigures) {
+          const dragonSites = [
+            ...(dragon.relatedSites ?? []),
+            ...(dragon.settledSites ?? []),
+            ...(dragon.involvedSites ?? []),
+          ];
+          for (const relatedSite of dragonSites) {
+            for (const coordinate of relatedSite.site.coordinates ?? []) {
+              const key = coordinateKey(coordinate.x, coordinate.y);
+              const itemsAtCoordinate = tileItemsMap.get(key) ?? [];
+              if (itemsAtCoordinate.some(item =>
+                item.type === 'historicalFigure' && (item.data as DragonHistoricalFigureDto).id === dragon.id)) {
+                continue;
+              }
+              const siteItem = itemsAtCoordinate.find(item =>
+                item.type === 'site' && (item.data as SiteAtCoordinate).marker.id === relatedSite.id);
+              if (!siteItem) continue;
+
+              registerTileItem({
+                type: 'historicalFigure',
+                x: coordinate.x,
+                y: coordinate.y,
+                layerGroup: siteItem.layerGroup,
+                marker: siteItem.marker,
+                data: dragon,
+              });
+            }
+          }
+        }
+        if (selectedDragonSiteIds.size > 0) {
+          renderDragonAttacksForSites([...selectedDragonSiteIds]);
+        }
+      } catch (error) {
+        console.error('Failed to load dragon attacks for the map:', error);
+      }
+    };
+
     const unregisterWarfareItems = () => {
       for (const [key, items] of tileItemsMap.entries()) {
-        const filtered = items.filter(i => i.type === 'site');
+        const filtered = items.filter(i => i.type === 'site' || i.type === 'historicalFigure');
         if (filtered.length > 0) {
           tileItemsMap.set(key, filtered);
         } else {
@@ -828,6 +1026,17 @@ export default defineComponent({
         leafletMap.value.on('zoomend', syncTileBadges);
         leafletMap.value.on('overlayadd', syncTileBadges);
         leafletMap.value.on('overlayremove', syncTileBadges);
+        leafletMap.value.on('overlayadd', event => {
+          if (event.layer === dragonAttackLayer) {
+            // Re-render when the checkbox is enabled after a site popup has already been selected.
+            renderDragonAttacksForSites([...selectedDragonSiteIds]);
+          }
+        });
+        leafletMap.value.on('overlayremove', event => {
+          if (event.layer === dragonAttackLayer) {
+            dragonAttackLayer.clearLayers();
+          }
+        });
 
         const mapContainerEl = document.getElementById('map');
         if (mapContainerEl && typeof window !== 'undefined' && 'ResizeObserver' in window) {
@@ -1109,6 +1318,10 @@ export default defineComponent({
         leafletMap.value.removeLayer(siteCountLayer.value as unknown as Layer);
         siteCountLayer.value = null;
       }
+      dragonAttackLayer.clearLayers();
+      if (leafletMap.value.hasLayer(dragonAttackLayer)) {
+        leafletMap.value.removeLayer(dragonAttackLayer);
+      }
 
       for (const key in ownerLayers) {
         if (leafletMap.value.hasLayer(ownerLayers[key])) {
@@ -1140,7 +1353,6 @@ export default defineComponent({
         if (!warfareLayer.value) {
           warfareLayer.value = new L.LayerGroup();
         }
-
         const layersControl: Record<string, LayerGroup> = {};
 
         // Iterate over the site markers
@@ -1183,6 +1395,8 @@ export default defineComponent({
 
         // Add Wars & Battles overlay to layersControl so it is included in control creation
         layersControl['Wars & Battles'] = warfareLayer.value as any;
+        // Keep dragon arrows as a separate user-controlled overlay.
+        layersControl['Dragon attacks'] = dragonAttackLayer;
 
         // Add the site owner layers to the map
         for (const key in ownerLayers) {
@@ -1194,6 +1408,7 @@ export default defineComponent({
 
         syncTileBadges();
 
+        void loadDragonSiteItems();
         void mapStore.loadWarfareMap(true).then((data: WarfareMapDto | null) => {
           if (data && warfareLayer.value) {
             unregisterWarfareItems();

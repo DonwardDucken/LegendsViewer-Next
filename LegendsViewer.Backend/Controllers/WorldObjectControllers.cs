@@ -84,6 +84,7 @@ public class HistoricalFigureController(IWorldObjectRepository<HistoricalFigure>
             .Where(peak => peak.IsVolcano)
             .SelectMany(peak => peak.Coordinates)
             .ToList() ?? [];
+        var worldSites = figures.FirstOrDefault()?.World?.Sites ?? [];
         var dragons = figures
             .Where(figure => string.Equals(figure.Race.Id, "DRAGON", StringComparison.OrdinalIgnoreCase))
             .Select(figure => new DragonHistoricalFigureDto(
@@ -94,13 +95,20 @@ public class HistoricalFigureController(IWorldObjectRepository<HistoricalFigure>
                 GetDistanceToNearestVolcano(figure, volcanoCoordinates),
                 figure.RelatedSites
                     .Where(siteLink => siteLink.Site != null)
-                    .Select(siteLink => new DragonRelatedSiteDto(
-                        siteLink.Site!.Id,
-                        siteLink.Site.Name,
-                        siteLink.Site.Type,
-                        siteLink.Site))
+                    .Select(siteLink => CreateDragonRelatedSiteDto(siteLink.Site!))
                     .DistinctBy(site => site.Id)
                     .ToList(),
+                figure.Events
+                    .OfType<ChangeHfState>()
+                    .Where(worldEvent => worldEvent.State == HfState.Settled && worldEvent.Site != null)
+                    .Select(worldEvent => worldEvent.Site!)
+                    .DistinctBy(site => site.Id)
+                    .Select(CreateDragonRelatedSiteDto)
+                    .ToList(),
+                GetDragonInvolvedSites(figure, worldSites)
+                    .Select(CreateDragonRelatedSiteDto)
+                    .ToList(),
+                GetDragonSiteAttacks(figure, worldSites),
                 figure.Events
                     .OfType<ChangeHfState>()
                     .Where(worldEvent => worldEvent.State == HfState.Settled && worldEvent.SubState is not (45 or 46 or 47))
@@ -111,6 +119,212 @@ public class HistoricalFigureController(IWorldObjectRepository<HistoricalFigure>
             .ToList();
 
         return Ok(dragons);
+    }
+
+    private static List<Site> GetDragonInvolvedSites(HistoricalFigure figure, IEnumerable<Site> worldSites)
+    {
+        // Dragon participation may be recorded as travel, combat, a rampage, or only a site link.
+        var sites = figure.RelatedSites
+            .Where(siteLink => siteLink.Site != null)
+            .Select(siteLink => siteLink.Site!)
+            .Concat(figure.Events.OfType<ChangeHfState>().Where(worldEvent => worldEvent.Site != null).Select(worldEvent => worldEvent.Site!))
+            .Concat(figure.Events.OfType<HfTravel>().Where(worldEvent => worldEvent.Site != null).Select(worldEvent => worldEvent.Site!))
+            .Concat(figure.Events.OfType<HfAttackedSite>().Where(worldEvent => worldEvent.Site != null).Select(worldEvent => worldEvent.Site!))
+            .Concat(figure.Events.OfType<HfDestroyedSite>().Where(worldEvent => worldEvent.Site != null).Select(worldEvent => worldEvent.Site!))
+            .Concat(figure.Events.OfType<HfSimpleBattleEvent>().Where(worldEvent => worldEvent.Site != null).Select(worldEvent => worldEvent.Site!))
+            .Concat(figure.BeastAttacks.Where(attack => attack.Site != null).Select(attack => attack.Site!))
+            .Concat(worldSites
+                .SelectMany(site => site.Events.OfType<AttackedSite>())
+                .Where(attack => attack.AttackerGeneral == figure && attack.Site != null)
+                .Select(attack => attack.Site!));
+
+        return sites.DistinctBy(site => site.Id).ToList();
+    }
+
+    private static List<DragonSiteAttackDto> GetDragonSiteAttacks(HistoricalFigure figure, IEnumerable<Site> worldSites)
+    {
+        // Rampage sub-events can also appear in the figure/site event lists; exclude them there to avoid duplicate arrows.
+        var beastAttackEventIds = figure.BeastAttacks
+            .SelectMany(attack => attack.AllEvents)
+            .Select(worldEvent => worldEvent.Id)
+            .ToHashSet();
+        var attacks = new List<(int EventId, int Year, Site Site, WorldEvent? ReferenceEvent)>();
+
+        // BeastAttack collections identify the target site even when no individual attack event does.
+        attacks.AddRange(figure.BeastAttacks
+            .Where(attack => attack.Site != null)
+            .Select(attack => (
+                attack.Id,
+                attack.StartYear,
+                attack.Site!,
+                attack.AllEvents.OrderBy(worldEvent => worldEvent.Year).ThenBy(worldEvent => worldEvent.Id).FirstOrDefault())));
+
+        attacks.AddRange(worldSites
+            .SelectMany(site => site.Events.OfType<AttackedSite>())
+            .Where(attack => attack.AttackerGeneral == figure && attack.Site != null && !beastAttackEventIds.Contains(attack.Id))
+            .Select(attack => (attack.Id, attack.Year, attack.Site!, (WorldEvent?)attack)));
+
+        attacks.AddRange(figure.Events
+            .OfType<HfAttackedSite>()
+            .Where(attack => attack.Attacker == figure && attack.Site != null && !beastAttackEventIds.Contains(attack.Id))
+            .Select(attack => (attack.Id, attack.Year, attack.Site!, (WorldEvent?)attack)));
+
+        attacks.AddRange(figure.Events
+            .OfType<HfDestroyedSite>()
+            .Where(attack => attack.Attacker == figure && attack.Site != null && !beastAttackEventIds.Contains(attack.Id))
+            .Select(attack => (attack.Id, attack.Year, attack.Site!, (WorldEvent?)attack)));
+
+        attacks.AddRange(figure.Events
+            .OfType<HfSimpleBattleEvent>()
+            .Where(attack => attack.HistoricalFigure1 == figure && attack.Site != null && IsAggressiveBattle(attack.SubType))
+            .Select(attack => (attack.Id, attack.Year, attack.Site!, (WorldEvent?)attack)));
+
+        return attacks
+            .OrderBy(attack => attack.Year)
+            .ThenBy(attack => attack.EventId)
+            .Select(attack => new DragonSiteAttackDto(
+                attack.EventId,
+                attack.Year,
+                attack.ReferenceEvent != null && GetPreviousSite(figure, attack.ReferenceEvent) is { } previousSite
+                    ? ToDragonSiteDto(previousSite)
+                    : null,
+                ToDragonSiteDto(attack.Site)))
+            .ToList();
+    }
+
+    // Include combat events where the figure is recorded as the initiating or winning aggressor.
+    private static bool IsAggressiveBattle(HfSimpleBattleType battleType) =>
+        battleType is HfSimpleBattleType.Attacked
+            or HfSimpleBattleType.Ambushed
+            or HfSimpleBattleType.Cornered
+            or HfSimpleBattleType.Surprised
+            or HfSimpleBattleType.Subdued
+            or HfSimpleBattleType.Confronted
+            or HfSimpleBattleType.Hf2LostAfterGivingWounds
+            or HfSimpleBattleType.Hf2LostAfterMutualWounds
+            or HfSimpleBattleType.Hf2LostAfterReceivingWounds;
+
+    private static DragonRelatedSiteDto CreateDragonRelatedSiteDto(Site site) =>
+        new(
+            site.Id,
+            site.Name,
+            site.Type,
+            ToDragonSiteDto(site),
+            GetDragonSiteAttackers(site));
+
+    private static List<DragonSiteAttackerDto> GetDragonSiteAttackers(Site site)
+    {
+        var attacks = new List<(HistoricalFigure Attacker, int EventId, int Year, WorldEvent? ReferenceEvent)>();
+
+        // Site attacks use several event types; collect them together so dragon sites show ordinary HF attackers too.
+        attacks.AddRange(site.Events
+            .OfType<AttackedSite>()
+            .Where(attack => attack.AttackerGeneral != null)
+            .Select(attack => (attack.AttackerGeneral!, attack.Id, attack.Year, (WorldEvent?)attack)));
+
+        attacks.AddRange(site.Events
+            .OfType<HfAttackedSite>()
+            .Where(attack => attack.Attacker != null)
+            .Select(attack => (attack.Attacker!, attack.Id, attack.Year, (WorldEvent?)attack)));
+
+        attacks.AddRange(site.Events
+            .OfType<HfDestroyedSite>()
+            .Where(attack => attack.Attacker != null)
+            .Select(attack => (attack.Attacker!, attack.Id, attack.Year, (WorldEvent?)attack)));
+
+        attacks.AddRange(site.Events
+            .OfType<HfSimpleBattleEvent>()
+            .Where(attack => attack.HistoricalFigure1 != null && IsAggressiveBattle(attack.SubType))
+            .Select(attack => (attack.HistoricalFigure1!, attack.Id, attack.Year, (WorldEvent?)attack)));
+
+        attacks.AddRange(site.BeastAttacks
+            .Where(attack => attack.Beast != null)
+            .Select(attack => (
+                attack.Beast!,
+                attack.Id,
+                attack.StartYear,
+                attack.AllEvents.OrderBy(worldEvent => worldEvent.Year).ThenBy(worldEvent => worldEvent.Id).FirstOrDefault())));
+
+        return attacks
+            .DistinctBy(attack => (attack.Attacker.Id, attack.EventId))
+            .OrderBy(attack => attack.Year)
+            .ThenBy(attack => attack.EventId)
+            .Select(attack => CreateDragonSiteAttacker(attack.Attacker, attack.EventId, attack.Year, attack.ReferenceEvent))
+            .ToList();
+    }
+
+    private static DragonSiteAttackerDto CreateDragonSiteAttacker(
+        HistoricalFigure attacker,
+        int eventId,
+        int year,
+        WorldEvent? referenceEvent)
+    {
+        var previousPosition = referenceEvent == null ? null : GetPreviousSite(attacker, referenceEvent);
+
+        return new DragonSiteAttackerDto(
+            attacker.Id,
+            attacker.Name,
+            eventId,
+            year,
+            previousPosition == null ? null : ToDragonSiteDto(previousPosition));
+    }
+
+    private static Site? GetPreviousSite(HistoricalFigure figure, WorldEvent referenceEvent)
+    {
+        // Use both state changes and travel records; some worlds record a visit without changing the figure's state.
+        var locationEvents = figure.Events
+            .OfType<ChangeHfState>()
+            .Select(worldEvent => new
+            {
+                worldEvent.Year,
+                worldEvent.Month,
+                worldEvent.Day,
+                worldEvent.Id,
+                worldEvent.Site,
+                worldEvent.Coordinates
+            })
+            .Concat(figure.Events
+                .OfType<HfTravel>()
+                .Select(worldEvent => new
+                {
+                    worldEvent.Year,
+                    worldEvent.Month,
+                    worldEvent.Day,
+                    worldEvent.Id,
+                    worldEvent.Site,
+                    worldEvent.Coordinates
+                }));
+
+        // Compare by full event time, then map coordinate-only locations back to a known site.
+        return locationEvents
+            .Where(worldEvent => (worldEvent.Year, worldEvent.Month, worldEvent.Day, worldEvent.Id)
+                .CompareTo((referenceEvent.Year, referenceEvent.Month, referenceEvent.Day, referenceEvent.Id)) < 0)
+            .Select(worldEvent => new
+            {
+                worldEvent.Year,
+                worldEvent.Month,
+                worldEvent.Day,
+                worldEvent.Id,
+                Site = worldEvent.Site ?? (worldEvent.Coordinates == null
+                    ? null
+                    : figure.World?.Sites.FirstOrDefault(site => site.Coordinates.Contains(worldEvent.Coordinates)))
+            })
+            .Where(worldEvent => worldEvent.Site != null)
+            .OrderByDescending(worldEvent => worldEvent.Year)
+            .ThenByDescending(worldEvent => worldEvent.Month)
+            .ThenByDescending(worldEvent => worldEvent.Day)
+            .ThenByDescending(worldEvent => worldEvent.Id)
+            .Select(worldEvent => worldEvent.Site)
+            .FirstOrDefault();
+    }
+
+    private static DragonSiteDto ToDragonSiteDto(Site site) =>
+        new(site.Id, site.Name, site.ToLink(), site.Coordinates);
+
+    private static bool IsBefore(WorldEvent worldEvent, WorldEvent referenceEvent)
+    {
+        return (worldEvent.Year, worldEvent.Month, worldEvent.Day, worldEvent.Id)
+            .CompareTo((referenceEvent.Year, referenceEvent.Month, referenceEvent.Day, referenceEvent.Id)) < 0;
     }
 
     private static double? GetDistanceToNearestVolcano(HistoricalFigure figure, List<Location> volcanoCoordinates)

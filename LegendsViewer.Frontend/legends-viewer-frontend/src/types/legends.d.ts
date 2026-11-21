@@ -119,8 +119,39 @@ export interface DragonHistoricalFigureDto{
     id: number;
     name: string;
     isAlive: boolean;
-    RelatedSites: DragonRelatedSiteDto[];
-    SettledInEvents: WorldEventDto[];
+    relatedSites: DragonRelatedSiteDto[];
+    settledSites: DragonRelatedSiteDto[];
+    involvedSites: DragonRelatedSiteDto[];
+    siteAttacks: DragonSiteAttackDto[];
+    settledInEvents: WorldEventDto[];
 }
 
+export interface DragonRelatedSiteDto {
+    id: number;
+    name: string;
+    type: string;
+    site: DragonSiteDto;
+    attackers: DragonSiteAttackerDto[];
+}
 
+export interface DragonSiteDto {
+    id: number;
+    name: string;
+    link: string;
+    coordinates: LocationDto[];
+}
+
+export interface DragonSiteAttackerDto {
+    id: number;
+    name: string;
+    attackEventId: number;
+    attackYear: number;
+    previousPosition: DragonSiteDto | null;
+}
+
+export interface DragonSiteAttackDto {
+    attackEventId: number;
+    attackYear: number;
+    previousPosition: DragonSiteDto | null;
+    targetSite: DragonSiteDto;
+}

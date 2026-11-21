@@ -20534,6 +20534,9 @@ export interface components {
             /** Format: double */
             distanceToNearestVolcano?: number | null;
             relatedSites?: components["schemas"]["DragonRelatedSiteDto"][] | null;
+            settledSites?: components["schemas"]["DragonRelatedSiteDto"][] | null;
+            involvedSites?: components["schemas"]["DragonRelatedSiteDto"][] | null;
+            siteAttacks?: components["schemas"]["DragonSiteAttackDto"][] | null;
             settledInEvents?: components["schemas"]["WorldEventDto"][] | null;
         };
         DragonRelatedSiteDto: {
@@ -20541,6 +20544,33 @@ export interface components {
             id?: number;
             name?: string | null;
             type?: string | null;
+            site?: components["schemas"]["DragonSiteDto"];
+            attackers?: components["schemas"]["DragonSiteAttackerDto"][] | null;
+        };
+        DragonSiteAttackDto: {
+            /** Format: int32 */
+            attackEventId?: number;
+            /** Format: int32 */
+            attackYear?: number;
+            previousPosition?: components["schemas"]["DragonSiteDto"];
+            targetSite?: components["schemas"]["DragonSiteDto"];
+        };
+        DragonSiteAttackerDto: {
+            /** Format: int32 */
+            id?: number;
+            name?: string | null;
+            /** Format: int32 */
+            attackEventId?: number;
+            /** Format: int32 */
+            attackYear?: number;
+            previousPosition?: components["schemas"]["DragonSiteDto"];
+        };
+        DragonSiteDto: {
+            /** Format: int32 */
+            id?: number;
+            name?: string | null;
+            link?: string | null;
+            coordinates?: components["schemas"]["Location"][] | null;
         };
         Duel: {
             /** Format: int32 */
