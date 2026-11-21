@@ -483,6 +483,13 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 
+# Local Dwarf Fortress world exports
+/region*-*-legends.xml
+/region*-*-legends_plus.xml
+/region*-*-world_history.txt
+/region*-*-world_map.csv
+/region*-*-world_sites_and_pops.txt
+
 # Team
 .team/
 
